@@ -1,13 +1,24 @@
 # Secretos, variables y certificados mTLS (NUNCA subir a Git)
 .env
 .env.*
+.env.ares
+.env.hermes
+.env.zeus
 !.env.example
+!.env.ares.example
+!.env.hermes.example
+!.env.zeus.example
+
+# Certificados mTLS generados localmente o en OCI
+certs/generated/
 *.p12
 *.jks
 *.key
 *.pem
 *.crt
+*.csr
 *.srl
+*.ext
 
 # IDEs / OS
 .idea/

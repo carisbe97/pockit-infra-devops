@@ -1,0 +1,138 @@
+# Docker Compose — Pockit Finance | Ambiente ZEUS (Produccion en OCI)
+# Uso:
+#   docker compose --env-file .env.zeus -f docker-compose.zeus.yml up -d --build
+# Arquitectura de red:
+#   - pockit-internal-net (internal: true): red aislada sin exposicion directa al host.
+#   - pockit-public-net   (bridge)        : solo pockit-api-gateway expone 443:8443 al exterior.
+
+services:
+  pockit-ms-auth-user:
+    build:
+      context: ../pockit-ms-auth-user
+      dockerfile: Dockerfile
+    image: ${MS_AUTH_IMAGE:-pockit-ms-auth-user:zeus}
+    container_name: pockit-ms-auth-user-zeus
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    expose:
+      - "8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: zeus
+      SERVER_PORT: 8081
+      JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:?JASYPT_ENCRYPTOR_PASSWORD es obligatoria en Zeus}
+      DB_URL: ${DB_URL:?DB_URL es obligatoria en Zeus}
+      DB_USERNAME: ${DB_USERNAME:?DB_USERNAME es obligatoria en Zeus}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatoria en Zeus}
+      FLYWAY_DB_URL: ${FLYWAY_DB_URL:?FLYWAY_DB_URL es obligatoria en Zeus}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET es obligatoria en Zeus}
+      JWT_ISSUER: ${JWT_ISSUER:-pockit-ms-auth-user}
+      APP_CRYPTO_RSA_PRIVATE_KEY: ${APP_CRYPTO_RSA_PRIVATE_KEY:?APP_CRYPTO_RSA_PRIVATE_KEY es obligatoria en Zeus}
+      APP_CRYPTO_RSA_PUBLIC_KEY: ${APP_CRYPTO_RSA_PUBLIC_KEY:?APP_CRYPTO_RSA_PUBLIC_KEY es obligatoria en Zeus}
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-https://app.pockitfinance.com}
+      SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL es obligatoria en Zeus}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY es obligatoria en Zeus}
+      SUPABASE_AVATAR_BUCKET: ${SUPABASE_AVATAR_BUCKET:-avatars}
+      SERVER_SSL_ENABLED: "true"
+      SSL_KEYSTORE_PATH: file:/app/certs/ms-auth-keystore.p12
+      SSL_KEYSTORE_PASSWORD: ${SSL_KEYSTORE_PASSWORD:?SSL_KEYSTORE_PASSWORD es obligatoria en Zeus}
+      SSL_KEYSTORE_TYPE: PKCS12
+      SSL_KEY_ALIAS: pockit-ms-auth-user
+      SSL_TRUSTSTORE_PATH: file:/app/certs/pockit-truststore.p12
+      SSL_TRUSTSTORE_PASSWORD: ${SSL_TRUSTSTORE_PASSWORD:?SSL_TRUSTSTORE_PASSWORD es obligatoria en Zeus}
+      SSL_TRUSTSTORE_TYPE: PKCS12
+      MTLS_HEALTHCHECK_PASSWORD: ${MTLS_HEALTHCHECK_PASSWORD:?MTLS_HEALTHCHECK_PASSWORD es obligatoria en Zeus}
+      JAVA_OPTS: ${MS_AUTH_JAVA_OPTS:--Xms256m -Xmx512m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError}
+      TZ: UTC
+    volumes:
+      - ./certs/generated/ms-auth-keystore.p12:/app/certs/ms-auth-keystore.p12:ro
+      - ./certs/generated/pockit-truststore.p12:/app/certs/pockit-truststore.p12:ro
+      - ./certs/generated/pockit-root-ca.crt:/app/certs/pockit-root-ca.crt:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
+        reservations:
+          cpus: "0.50"
+          memory: 384M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --cacert /app/certs/pockit-root-ca.crt --cert-type P12 --cert /app/certs/ms-auth-keystore.p12:$${MTLS_HEALTHCHECK_PASSWORD} https://localhost:8081/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 45s
+    networks:
+      - pockit-internal-net
+
+  pockit-api-gateway:
+    build:
+      context: ../pockit-api-gateway
+      dockerfile: Dockerfile
+    image: ${GATEWAY_IMAGE:-pockit-api-gateway:zeus}
+    container_name: pockit-api-gateway-zeus
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      pockit-ms-auth-user:
+        condition: service_healthy
+    ports:
+      - "443:8443"
+    environment:
+      SPRING_PROFILES_ACTIVE: zeus
+      SERVER_PORT: 8443
+      AUTH_SERVICE_URL: https://pockit-ms-auth-user:8081
+      JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:?JASYPT_ENCRYPTOR_PASSWORD es obligatoria en Zeus}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET es obligatoria en Zeus}
+      APP_CORS_ALLOWED_ORIGINS: ${APP_CORS_ALLOWED_ORIGINS:-https://app.pockitfinance.com}
+      SERVER_SSL_ENABLED: "true"
+      SSL_KEYSTORE_PATH: file:/app/certs/gateway-keystore.p12
+      SSL_KEYSTORE_PASSWORD: ${SSL_KEYSTORE_PASSWORD:?SSL_KEYSTORE_PASSWORD es obligatoria en Zeus}
+      SSL_KEYSTORE_TYPE: PKCS12
+      SSL_KEY_ALIAS: pockit-api-gateway
+      SSL_TRUSTSTORE_PATH: file:/app/certs/pockit-truststore.p12
+      SSL_TRUSTSTORE_PASSWORD: ${SSL_TRUSTSTORE_PASSWORD:?SSL_TRUSTSTORE_PASSWORD es obligatoria en Zeus}
+      SSL_TRUSTSTORE_TYPE: PKCS12
+      JAVA_OPTS: ${GATEWAY_JAVA_OPTS:--Xms192m -Xmx384m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError}
+      TZ: UTC
+    volumes:
+      - ./certs/generated/gateway-keystore.p12:/app/certs/gateway-keystore.p12:ro
+      - ./certs/generated/pockit-truststore.p12:/app/certs/pockit-truststore.p12:ro
+      - ./certs/generated/pockit-root-ca.crt:/app/certs/pockit-root-ca.crt:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --cacert /app/certs/pockit-root-ca.crt https://localhost:8443/actuator/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - pockit-public-net
+      - pockit-internal-net
+
+networks:
+  pockit-internal-net:
+    name: pockit-zeus-internal-net
+    driver: bridge
+    internal: true
+  pockit-public-net:
+    name: pockit-zeus-public-net
+    driver: bridge
