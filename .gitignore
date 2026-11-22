@@ -1,0 +1,16 @@
+# Secretos, variables y certificados mTLS (NUNCA subir a Git)
+.env
+.env.*
+!.env.example
+*.p12
+*.jks
+*.key
+*.pem
+*.crt
+*.srl
+
+# IDEs / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
