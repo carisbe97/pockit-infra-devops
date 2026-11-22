@@ -80,6 +80,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ares
       SERVER_PORT: 8080
+      MS_AUTH_USER_URI: http://pockit-ms-auth-user:8081
       AUTH_SERVICE_URL: http://pockit-ms-auth-user:8081
       JASYPT_ENCRYPTOR_PASSWORD: ${JASYPT_ENCRYPTOR_PASSWORD:-pockit-ares-dev-jasypt-master-key}
       JWT_SECRET: ${JWT_SECRET:-pockit-ares-dev-jwt-secret-key-minimo-64-bytes-hs512-solo-desarrollo-local-0123456789}
